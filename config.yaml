@@ -1,0 +1,43 @@
+# config.yaml
+# ============================================
+# ASCII Art Converter 配置示例
+# 你可以调整这些参数以控制输出效果
+# ============================================
+
+# 输出宽度（字符数）；如果未指定则按 height 或 scale 计算
+width: 120
+
+# 输出高度（字符数）；如果未指定则按 width 或 scale 计算
+# height: 60
+
+# 缩放比例（例如 0.3 表示缩小 70%）
+# 与 width/height 二选一，优先级更低
+# scale: 0.5
+
+# 字符集
+# 可选：sparse | standard | dense | blocks | binary
+# 或者自定义字符串，例如 "@#*+=-:. "
+charset: "standard"
+
+# 颜色模式
+# 可选：none | ansi | truecolor | html
+color: "none"
+
+# HTML 模式下的背景色（CSS 颜色值）
+bg: "black"
+
+# 是否反相（黑白反转）
+invert: false
+
+# Gamma 矫正，越大图像越亮
+gamma: 1.0
+
+# 对比度调整，>1 增强对比度，<1 降低对比度
+contrast: 1.0
+
+# 字符宽高比修正
+# 终端字符通常高于宽，默认 0.45（常见在 0.4 ~ 0.55）
+char_aspect: 0.45
+
+# 是否开启抖动（缩放时随机扰动）
+dither: false
