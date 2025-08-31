@@ -20,7 +20,12 @@ import re
 import sys
 import time
 import shutil
-from typing import Optional, Iterable, Tuple, List
+from typing import Optional, Iterable, Tuple, List, Dict, Any
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 import cv2
 import numpy as np
@@ -28,7 +33,7 @@ from tqdm import tqdm
 from PIL import Image, ImageDraw, ImageFont
 
 # Use config and converter from ascii_image
-from ascii_image import AsciiImageConfig, AsciiImageConverter
+from ascii_image import AsciiImageConfig, AsciiImageConverter, load_yaml_config, merge_configs
 
 
 class AsciiVideoConverter:
@@ -355,6 +360,7 @@ class AsciiVideoRenderer:
 def parse_args(argv):
     parser = argparse.ArgumentParser(description="Video to ASCII Art animation")
     parser.add_argument("-i", "--input", required=True, help="Input video path")
+    parser.add_argument("-c", "--config", help="Path to YAML configuration file")
     parser.add_argument("-o", "--output-dir", help="输出帧目录（每帧一个 .txt）")
     parser.add_argument("-m", "--save-mp4", help="导出为 MP4 文件路径，例如 out.mp4")
     parser.add_argument("-g", "--save-gif", help="导出为 GIF 文件路径，例如 out.gif")
@@ -383,23 +389,18 @@ def parse_args(argv):
 def main(argv) -> int:
     args = parse_args(argv)
 
-    cfg = AsciiImageConfig()
-    # override with CLI args
-    cli_overrides = {
-        "width": args.width,
-        "height": args.height,
-        "scale": args.scale,
-        "charset": args.charset,
-        "color": args.color,
-        "invert": args.invert,
-        "gamma": args.gamma,
-        "contrast": args.contrast,
-        "char_aspect": args.char_aspect,
-        "dither": args.dither,
-    }
-    for key, val in cli_overrides.items():
-        if val is not None:
-            setattr(cfg, key, val)
+    # Load YAML config if specified
+    yaml_config = None
+    if args.config:
+        try:
+            yaml_config = load_yaml_config(args.config)
+        except Exception as exc:
+            print(f"Config loading failed: {exc}", file=sys.stderr)
+            return 2
+    
+    # Create default config and merge with YAML and CLI args
+    default_config = AsciiImageConfig()
+    cfg = merge_configs(default_config, yaml_config, args)
 
     # 构造生成器
     video_converter = AsciiVideoConverter(cfg)

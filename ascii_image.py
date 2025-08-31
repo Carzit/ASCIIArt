@@ -19,7 +19,12 @@ import argparse
 import os
 import sys
 from dataclasses import dataclass, asdict
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 try:
     from PIL import Image, ImageOps, ImageEnhance
@@ -32,7 +37,6 @@ except Exception as exc:  # pragma: no cover - 运行环境依赖
 CHARSETS = {
     "sparse": " .:-=+*#%@",
     "standard": " .'`\"^,,:;Il!i><~+_-?][}{1)(|\\/*tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$",
-    "dense": "@%#*+=-:. ",
     "blocks": " ▁▂▃▄▅▆▇█",
     "binary": " .",
 }
@@ -122,6 +126,40 @@ def _resolve_charset(name_or_literal: str) -> str:
     return name_or_literal
 
 
+def merge_configs(default_config: AsciiImageConfig, yaml_config: Optional[AsciiImageConfig], 
+                  cli_args: argparse.Namespace) -> AsciiImageConfig:
+    """Merge configurations with priority: CLI args > YAML config > defaults."""
+    # Start with default config
+    merged = AsciiImageConfig()
+    
+    # Apply YAML config (if provided)
+    if yaml_config:
+        for key, value in yaml_config.to_dict().items():
+            if hasattr(merged, key) and value is not None:
+                setattr(merged, key, value)
+    
+    # Apply CLI args (highest priority)
+    cli_overrides = {
+        "width": cli_args.width,
+        "height": cli_args.height,
+        "scale": cli_args.scale,
+        "charset": cli_args.charset,
+        "color": cli_args.color,
+        "bg": cli_args.bg,
+        "invert": cli_args.invert,
+        "gamma": cli_args.gamma,
+        "contrast": cli_args.contrast,
+        "char_aspect": cli_args.char_aspect,
+        "dither": cli_args.dither,
+    }
+    
+    for key, value in cli_overrides.items():
+        if value is not None:
+            setattr(merged, key, value)
+    
+    return merged
+
+
 # ------------------------ Config ------------------------
 @dataclass
 class AsciiImageConfig:
@@ -143,6 +181,42 @@ class AsciiImageConfig:
         """Return config as dict."""
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, data: dict) -> 'AsciiImageConfig':
+        """Load config from dict."""
+        return cls(**data)
+
+    @classmethod
+    def from_yaml(cls, path: str) -> 'AsciiImageConfig':
+        """Load config from YAML file."""
+        if yaml is None:
+            raise ImportError("PyYAML is required for YAML config support. Install with: pip install pyyaml")
+        
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Config file not found: {path}")
+        
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+            if not isinstance(config, dict):
+                raise ValueError("Config file must contain a YAML dictionary")
+            return cls.from_dict(config)
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML in config file: {e}")
+        except Exception as e:
+            raise ValueError(f"Error reading config file: {e}")
+
+    def to_yaml(self, path: str) -> None:
+        """Save config to YAML file."""
+        if yaml is None:
+            raise ImportError("PyYAML is required for YAML config support. Install with: pip install pyyaml")
+        
+        with open(path, 'w', encoding='utf-8') as f:
+            yaml.dump(self.to_dict(), f, default_flow_style=False, allow_unicode=True)
+
+    def from_parser(self, parser: argparse.ArgumentParser) -> 'AsciiImageConfig':
+        """Load config from parser."""
+        return self.from_dict(parser.parse_args().__dict__)
 
 # ------------------------ Core Converter ------------------------
 class AsciiImageConverter:
@@ -346,6 +420,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Convert image to ASCII art (unified module)")
     parser.add_argument("-i", "--input", required=True, help="Input image path")
     parser.add_argument("-o", "--output", help="Output file path (.txt or .html). Omit to print")
+    parser.add_argument("-c", "--config", help="Path to YAML configuration file")
 
     size = parser.add_argument_group("size controls")
     size.add_argument("--width", type=int, help="Target width (characters)")
@@ -371,19 +446,19 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
 
 def main(argv: List[str]) -> int:
     args = parse_args(argv)
-    cfg = AsciiImageConfig(
-        width=args.width,
-        height=args.height,
-        scale=args.scale,
-        charset=args.charset,
-        color=args.color,
-        bg=args.bg,
-        invert=args.invert,
-        gamma=args.gamma,
-        contrast=args.contrast,
-        char_aspect=args.char_aspect,
-        dither=args.dither,
-    )
+    
+    # Load YAML config if specified
+    yaml_config = None
+    if args.config:
+        try:
+            yaml_config = AsciiImageConfig.from_yaml(args.config)
+        except Exception as exc:
+            print(f"Config loading failed: {exc}", file=sys.stderr)
+            return 2
+    
+    # Create default config and merge with YAML and CLI args
+    default_config = AsciiImageConfig()
+    cfg = merge_configs(default_config, yaml_config, args)
 
     try:
         converter = AsciiImageConverter(cfg)
